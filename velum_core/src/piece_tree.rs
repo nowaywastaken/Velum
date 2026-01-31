@@ -1,8 +1,10 @@
+use serde::{Serialize, Deserialize};
+use crate::find::{SearchOptions, SearchResult, SearchResultSet, search, find_all_in_text};
 use std::fmt;
 
 /// Represents which buffer a piece comes from
 /// -1 means original buffer (index 0), other values are buffer indices
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BufferId(pub isize);
 
 impl BufferId {
@@ -38,7 +40,7 @@ impl fmt::Display for BufferId {
 }
 
 /// Text attributes for rich text formatting
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct TextAttributes {
     pub bold: Option<bool>,           // 加粗
     pub italic: Option<bool>,         // 斜体
@@ -57,7 +59,7 @@ impl TextAttributes {
 }
 
 /// Represents a piece of text from a buffer
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Piece {
     /// Starting position in the buffer (byte offset)
     pub start: usize,
@@ -106,6 +108,59 @@ impl Piece {
     }
 }
 
+/// Represents a text selection with anchor and active positions
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Selection {
+    /// The anchor position (where selection started, stays fixed during shift+arrow)
+    pub anchor: usize,
+    /// The active position (current cursor/selection end, moves during navigation)
+    pub active: usize,
+}
+
+impl Selection {
+    /// Creates a new selection with the given anchor and active positions
+    pub fn new(anchor: usize, active: usize) -> Self {
+        Selection { anchor, active }
+    }
+
+    /// Returns true if the selection is empty (anchor == active)
+    pub fn is_empty(&self) -> bool {
+        self.anchor == self.active
+    }
+
+    /// Returns true if the selection is collapsed (same as is_empty)
+    pub fn collapsed(&self) -> bool {
+        self.is_empty()
+    }
+
+    /// Returns the start position (minimum of anchor and active)
+    pub fn start(&self) -> usize {
+        self.anchor.min(self.active)
+    }
+
+    /// Returns the end position (maximum of anchor and active)
+    pub fn end(&self) -> usize {
+        self.anchor.max(self.active)
+    }
+
+    /// Returns the selection length
+    pub fn length(&self) -> usize {
+        self.end().saturating_sub(self.start())
+    }
+}
+
+impl From<(usize, usize)> for Selection {
+    fn from(value: (usize, usize)) -> Self {
+        Selection::new(value.0, value.1)
+    }
+}
+
+impl Default for Selection {
+    fn default() -> Self {
+        Selection { anchor: 0, active: 0 }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Change {
     Insert {
@@ -136,6 +191,10 @@ pub struct PieceTree {
     redo_stack: Vec<Change>,
     /// Whether we are currently undoing or redoing
     is_undoing_redoing: bool,
+    /// Current text selection
+    pub selection: Selection,
+    /// Saved selection for undo/redo
+    saved_selection: Option<Selection>,
 }
 
 impl PieceTree {
@@ -166,6 +225,8 @@ impl PieceTree {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             is_undoing_redoing: false,
+            selection: Selection::default(),
+            saved_selection: None,
         }
     }
 
@@ -180,6 +241,8 @@ impl PieceTree {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             is_undoing_redoing: false,
+            selection: Selection::default(),
+            saved_selection: None,
         }
     }
 
@@ -191,8 +254,61 @@ impl PieceTree {
 
     /// Gets buffer index from BufferId
     #[inline]
-    fn buffer_idx(buffer_id: &BufferId) -> usize {
+    pub fn buffer_idx(buffer_id: &BufferId) -> usize {
         buffer_id.to_index()
+    }
+
+    // ==================== Selection Management ====================
+
+    /// Sets the selection with anchor and active positions
+    pub fn set_selection(&mut self, anchor: usize, active: usize) {
+        let max_pos = self.total_char_count.max(self.total_length);
+        self.selection.anchor = anchor.min(max_pos);
+        self.selection.active = active.min(max_pos);
+    }
+
+    /// Moves the selection to the specified position (collapses to cursor)
+    pub fn move_selection_to(&mut self, offset: usize) {
+        let max_pos = self.total_char_count.max(self.total_length);
+        let offset = offset.min(max_pos);
+        self.selection.anchor = offset;
+        self.selection.active = offset;
+    }
+
+    /// Clears the selection by collapsing to the end of the document
+    pub fn clear_selection(&mut self) {
+        let max_pos = self.total_char_count.max(self.total_length);
+        self.selection.anchor = max_pos;
+        self.selection.active = max_pos;
+    }
+
+    /// Gets the selection anchor position
+    pub fn get_selection_anchor(&self) -> usize {
+        self.selection.anchor
+    }
+
+    /// Gets the selection active position
+    pub fn get_selection_active(&self) -> usize {
+        self.selection.active
+    }
+
+    /// Returns true if there is a selection (not collapsed)
+    pub fn has_selection(&self) -> bool {
+        !self.selection.is_empty()
+    }
+
+    /// Gets the selected text range (start, end)
+    pub fn get_selection_range(&self) -> (usize, usize) {
+        (self.selection.start(), self.selection.end())
+    }
+
+    /// Gets the selected text content
+    pub fn get_selection_text(&self) -> String {
+        if self.selection.is_empty() {
+            return String::new();
+        }
+        let (start, end) = self.get_selection_range();
+        self.get_text_range(start, end - start)
     }
 
     // ==================== Insertion ====================
@@ -218,6 +334,8 @@ impl PieceTree {
 
         // Record change for undo
         if !self.is_undoing_redoing {
+            // Save current selection for undo
+            self.saved_selection = Some(self.selection);
             self.undo_stack.push(Change::Insert {
                 offset,
                 length: byte_count,
@@ -239,6 +357,10 @@ impl PieceTree {
             self.pieces.push(piece);
             self.total_char_count += char_count;
             self.total_length += byte_count;
+            // Move selection after inserted text
+            if !self.is_undoing_redoing {
+                self.move_selection_to(offset + char_count);
+            }
             return true;
         }
 
@@ -251,6 +373,10 @@ impl PieceTree {
                 self.pieces.push(piece);
                 self.total_char_count += char_count;
                 self.total_length += byte_count;
+                // Move selection after inserted text
+                if !self.is_undoing_redoing {
+                    self.move_selection_to(offset + char_count);
+                }
                 return true;
             }
         };
@@ -342,6 +468,12 @@ impl PieceTree {
 
         self.total_char_count += char_count;
         self.total_length += byte_count;
+        
+        // Move selection after inserted text
+        if !self.is_undoing_redoing {
+            self.move_selection_to(offset + char_count);
+        }
+        
         true
     }
 
@@ -505,6 +637,8 @@ impl PieceTree {
 
         // Record change for undo
         if !self.is_undoing_redoing {
+            // Save current selection for undo
+            self.saved_selection = Some(self.selection);
             let deleted_text = self.get_text_range(offset, length);
             self.undo_stack.push(Change::Delete {
                 offset,
@@ -576,6 +710,28 @@ impl PieceTree {
         self.total_char_count = self.total_char_count.saturating_sub(deleted_chars);
         self.total_length = self.total_length.saturating_sub(deleted_bytes);
 
+        // Adjust selection after delete
+        if !self.is_undoing_redoing {
+            let delete_start = offset;
+            let delete_end = end_offset;
+            
+            // If selection is entirely after deleted range, shift it left
+            if self.selection.start() >= delete_end {
+                let shift = delete_end - delete_start;
+                self.selection.anchor = self.selection.anchor.saturating_sub(shift);
+                self.selection.active = self.selection.active.saturating_sub(shift);
+            } else if self.selection.end() > delete_start && self.selection.start() < delete_end {
+                // Selection overlaps with deleted range - collapse to delete start
+                self.move_selection_to(delete_start);
+            } else if self.selection.end() > delete_start {
+                // Selection end is within deleted range
+                let shift = self.selection.end().saturating_sub(delete_start);
+                self.selection.anchor = self.selection.anchor.saturating_sub(shift.min(self.selection.anchor));
+                self.selection.active = self.selection.active.saturating_sub(shift.min(self.selection.active));
+            }
+            // If selection is entirely before deleted range, no adjustment needed
+        }
+
         true
     }
 
@@ -645,6 +801,10 @@ impl PieceTree {
             };
             self.redo_stack.push(redo_change);
             self.is_undoing_redoing = false;
+            // Restore selection
+            if let Some(saved_sel) = self.saved_selection {
+                self.selection = saved_sel;
+            }
             return true;
         }
         false
@@ -671,9 +831,23 @@ impl PieceTree {
             };
             self.undo_stack.push(undo_change);
             self.is_undoing_redoing = false;
+            // Restore selection
+            if let Some(saved_sel) = self.saved_selection {
+                self.selection = saved_sel;
+            }
             return true;
         }
         false
+    }
+
+    /// Returns true if there are undoable changes available
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    /// Returns true if there are redoable changes available
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
     }
 
     // ==================== Navigation ====================
@@ -785,6 +959,46 @@ impl PieceTree {
         full_text.chars().filter(|&c| c == '\n').count() + 1
     }
 
+    /// Gets the character offset for the start of a specific line (1-indexed)
+    /// Returns 0 if the line number is invalid
+    pub fn get_offset_at_line(&self, line_number: usize) -> usize {
+        if line_number == 0 || line_number == 1 {
+            return 0;
+        }
+
+        if self.pieces.is_empty() {
+            return 0;
+        }
+
+        let mut current_line = 1usize;
+        let mut char_count = 0usize;
+
+        for piece in &self.pieces {
+            let buffer_idx = Self::buffer_idx(&piece.buffer_id);
+            if let Some(buffer) = self.buffers.get(buffer_idx) {
+                let piece_text = if piece.start + piece.length <= buffer.len() {
+                    &buffer[piece.start..piece.start + piece.length]
+                } else {
+                    ""
+                };
+
+                for c in piece_text.chars() {
+                    if current_line == line_number {
+                        return char_count;
+                    }
+
+                    if c == '\n' {
+                        current_line += 1;
+                    }
+                    char_count += 1;
+                }
+            }
+        }
+
+        // If line_number is beyond the document, return the total length
+        char_count
+    }
+
     /// Gets total character count
     pub fn char_count(&self) -> usize {
         self.total_char_count
@@ -813,6 +1027,127 @@ impl PieceTree {
     /// Gets all pieces (for debugging)
     pub fn get_all_pieces(&self) -> &Vec<Piece> {
         &self.pieces
+    }
+
+    // ==================== Find & Replace ====================
+
+    /// Finds all matches in the document
+    pub fn find_all(&self, options: &SearchOptions) -> SearchResultSet {
+        let text = self.get_text();
+        find_all_in_text(&text, options)
+    }
+
+    /// Finds the next match starting from the given position
+    pub fn find_next(&self, options: &SearchOptions, from: usize) -> Option<SearchResult> {
+        let text = self.get_text();
+        let mut search_options = options.clone();
+        search_options.search_backward = false;
+        search(&text, &search_options, from)
+    }
+
+    /// Finds the previous match before the given position
+    pub fn find_previous(&self, options: &SearchOptions, from: usize) -> Option<SearchResult> {
+        let text = self.get_text();
+        let mut search_options = options.clone();
+        search_options.search_backward = true;
+        search(&text, &search_options, from)
+    }
+
+    /// Replaces the first match after the given position
+    /// Returns true if a replacement was made
+    pub fn replace_one(&mut self, options: &SearchOptions) -> bool {
+        if options.query.is_empty() {
+            return false;
+        }
+
+        let from = self.selection.active;
+        if let Some(result) = self.find_next(options, from) {
+            let matched_text = result.matched_text.clone();
+            let matched_len = matched_text.len();
+            
+            // Delete the matched text
+            self.delete(result.start, matched_len);
+            
+            // Insert the replacement
+            self.insert(result.start, options.replace.clone());
+            
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Replaces all matches in the document
+    /// Returns the number of replacements made
+    pub fn replace_all(&mut self, options: &SearchOptions) -> usize {
+        if options.query.is_empty() {
+            return 0;
+        }
+
+        let text = self.get_text();
+        let results = self.find_all(options);
+        
+        if results.results.is_empty() {
+            return 0;
+        }
+
+        // Work backwards to preserve positions
+        let mut replacements = 0;
+        for result in results.results.iter().rev() {
+            let matched_len = result.matched_text.len();
+            
+            // Delete the matched text
+            self.delete(result.start, matched_len);
+            
+            // Insert the replacement
+            self.insert(result.start, options.replace.clone());
+            
+            replacements += 1;
+        }
+
+        replacements
+    }
+
+    /// Searches for text with options, returns JSON result for FFI
+    pub fn find_text_json(&self, query: &str, options_json: &str) -> String {
+        // Parse options from JSON
+        let options: Result<SearchOptions, _> = serde_json::from_str(options_json);
+        let options = options.unwrap_or_else(|_| SearchOptions {
+            query: query.to_string(),
+            replace: String::new(),
+            case_sensitive: false,
+            whole_word: false,
+            regex: false,
+            wrap_around: true,
+            search_backward: false,
+        });
+        
+        let results = self.find_all(&options);
+        serde_json::to_string(&results).unwrap_or_else(|_| "{}".to_string())
+    }
+
+    /// Gets the count of matches for a query
+    pub fn get_match_count(&self, query: &str) -> i32 {
+        let options = SearchOptions {
+            query: query.to_string(),
+            ..Default::default()
+        };
+        self.find_all(&options).total_count as i32
+    }
+
+    /// Replaces text and returns the result as JSON
+    pub fn replace_text_json(&mut self, find: &str, replace: &str, all: bool) -> i32 {
+        let options = SearchOptions {
+            query: find.to_string(),
+            replace: replace.to_string(),
+            ..Default::default()
+        };
+        
+        if all {
+            self.replace_all(&options) as i32
+        } else {
+            if self.replace_one(&options) { 1 } else { 0 }
+        }
     }
 
     /// Debug: prints tree structure
@@ -1009,5 +1344,159 @@ mod tests {
         let mut pt = PieceTree::new("AAA BBB CCC".to_string());
         pt.delete(4, 4); // Delete "BBB "
         assert_eq!(pt.get_text(), "AAA CCC");
+    }
+
+    // ==================== Selection Tests ====================
+
+    #[test]
+    fn test_selection_default() {
+        let sel = Selection::default();
+        assert_eq!(sel.anchor, 0);
+        assert_eq!(sel.active, 0);
+        assert!(sel.is_empty());
+        assert!(sel.collapsed());
+    }
+
+    #[test]
+    fn test_selection_new() {
+        let sel = Selection::new(5, 10);
+        assert_eq!(sel.anchor, 5);
+        assert_eq!(sel.active, 10);
+        assert!(!sel.is_empty());
+        assert_eq!(sel.start(), 5);
+        assert_eq!(sel.end(), 10);
+        assert_eq!(sel.length(), 5);
+    }
+
+    #[test]
+    fn test_selection_from_tuple() {
+        let sel: Selection = (3, 7).into();
+        assert_eq!(sel.anchor, 3);
+        assert_eq!(sel.active, 7);
+    }
+
+    #[test]
+    fn test_selection_reversed() {
+        let sel = Selection::new(10, 5);
+        assert_eq!(sel.start(), 5);
+        assert_eq!(sel.end(), 10);
+        assert_eq!(sel.length(), 5);
+    }
+
+    #[test]
+    fn test_selection_methods() {
+        let sel = Selection::new(0, 0);
+        assert!(sel.is_empty());
+        assert!(sel.collapsed());
+        
+        let sel = Selection::new(5, 5);
+        assert!(sel.is_empty());
+        assert!(sel.collapsed());
+        
+        let sel = Selection::new(0, 5);
+        assert!(!sel.is_empty());
+        assert!(!sel.collapsed());
+    }
+
+    #[test]
+    fn test_piece_tree_selection() {
+        let mut pt = PieceTree::new("Hello World".to_string());
+        
+        // Default selection should be at end
+        assert_eq!(pt.get_selection_anchor(), 0);
+        assert_eq!(pt.get_selection_active(), 0);
+        
+        // Set selection
+        pt.set_selection(0, 5);
+        assert_eq!(pt.get_selection_anchor(), 0);
+        assert_eq!(pt.get_selection_active(), 5);
+        assert!(pt.has_selection());
+        
+        // Move selection
+        pt.move_selection_to(10);
+        assert_eq!(pt.get_selection_anchor(), 10);
+        assert_eq!(pt.get_selection_active(), 10);
+        assert!(!pt.has_selection());
+    }
+
+    #[test]
+    fn test_piece_tree_selection_text() {
+        let mut pt = PieceTree::new("Hello World".to_string());
+        pt.set_selection(0, 5);
+        assert_eq!(pt.get_selection_text(), "Hello");
+        
+        pt.set_selection(6, 11);
+        assert_eq!(pt.get_selection_text(), "World");
+        
+        pt.set_selection(5, 5); // collapsed
+        assert_eq!(pt.get_selection_text(), "");
+    }
+
+    #[test]
+    fn test_piece_tree_selection_after_insert() {
+        let mut pt = PieceTree::new("Hello World".to_string());
+        
+        // Set selection in the middle
+        pt.set_selection(5, 5); // cursor after "Hello"
+        
+        // Insert text - selection should move after inserted text
+        pt.insert(5, " Beautiful".to_string());
+        assert_eq!(pt.get_text(), "Hello Beautiful World");
+        assert_eq!(pt.get_selection_anchor(), 15); // 5 + 10 (len of " Beautiful")
+        assert_eq!(pt.get_selection_active(), 15);
+    }
+
+    #[test]
+    fn test_piece_tree_selection_after_delete() {
+        let mut pt = PieceTree::new("Hello Beautiful World".to_string());
+        
+        // Set selection after "Hello"
+        pt.set_selection(5, 5);
+        
+        // Delete " Beautiful" (10 chars)
+        pt.delete(5, 10);
+        assert_eq!(pt.get_text(), "Hello World");
+        
+        // Selection should be at delete position
+        assert_eq!(pt.get_selection_anchor(), 5);
+        assert_eq!(pt.get_selection_active(), 5);
+    }
+
+    #[test]
+    fn test_piece_tree_selection_adjust_after_delete() {
+        let mut pt = PieceTree::new("Hello World".to_string());
+        
+        // Set selection after deleted range
+        pt.set_selection(10, 10); // at end
+        
+        // Delete "Hello " (6 chars)
+        pt.delete(0, 6);
+        assert_eq!(pt.get_text(), "World");
+        
+        // Selection should shift left by 6
+        assert_eq!(pt.get_selection_anchor(), 4);
+        assert_eq!(pt.get_selection_active(), 4);
+    }
+
+    #[test]
+    fn test_piece_tree_get_selection_range() {
+        let mut pt = PieceTree::new("Hello World".to_string());
+        pt.set_selection(0, 5);
+        assert_eq!(pt.get_selection_range(), (0, 5));
+        
+        pt.set_selection(5, 0); // reversed
+        assert_eq!(pt.get_selection_range(), (0, 5));
+    }
+
+    #[test]
+    fn test_piece_tree_clear_selection() {
+        let mut pt = PieceTree::new("Hello World".to_string());
+        pt.set_selection(0, 5);
+        assert!(pt.has_selection());
+        
+        pt.clear_selection();
+        assert!(!pt.has_selection());
+        assert_eq!(pt.get_selection_anchor(), 11); // end of text
+        assert_eq!(pt.get_selection_active(), 11);
     }
 }

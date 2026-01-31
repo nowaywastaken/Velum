@@ -70,6 +70,14 @@ abstract class VelumCore {
   Future<String> redo({dynamic hint});
 
   FlutterRustBridgeTaskConstMeta get kRedoConstMeta;
+
+  Future<bool> canUndo({dynamic hint});
+
+  FlutterRustBridgeTaskConstMeta get kCanUndoConstMeta;
+
+  Future<bool> canRedo({dynamic hint});
+
+  FlutterRustBridgeTaskConstMeta get kCanRedoConstMeta;
 }
 
 class VelumCoreImpl implements VelumCore {
@@ -337,6 +345,40 @@ class VelumCoreImpl implements VelumCore {
   FlutterRustBridgeTaskConstMeta get kRedoConstMeta =>
       const FlutterRustBridgeTaskConstMeta(debugName: "redo", argNames: []);
 
+  Future<bool> canUndo({dynamic hint}) {
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) => _platform.inner.wire_can_undo(port_),
+        parseSuccessData: _wire2api_bool,
+        parseErrorData: null,
+
+        constMeta: kCanUndoConstMeta,
+        argValues: [],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kCanUndoConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(debugName: "can_undo", argNames: []);
+
+  Future<bool> canRedo({dynamic hint}) {
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) => _platform.inner.wire_can_redo(port_),
+        parseSuccessData: _wire2api_bool,
+        parseErrorData: null,
+
+        constMeta: kCanRedoConstMeta,
+        argValues: [],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kCanRedoConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(debugName: "can_redo", argNames: []);
+
   void dispose() {
     _platform.dispose();
   }
@@ -364,6 +406,10 @@ class VelumCoreImpl implements VelumCore {
 
   int _wire2api_usize(dynamic raw) {
     return castInt(raw);
+  }
+
+  bool _wire2api_bool(dynamic raw) {
+    return raw as bool;
   }
 }
 

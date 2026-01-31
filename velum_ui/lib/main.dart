@@ -4,6 +4,7 @@ import 'velum_core_wrapper.dart';
 import 'text_sync_manager.dart';
 import 'status_bar.dart';
 import 'toolbar.dart';
+import 'line_numbers.dart';
 import 'package:file_picker/file_picker.dart';
 
 void main() {
@@ -37,6 +38,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   bool _isSaving = false;
   String _previousText = "";
   bool _canUndo = true;
@@ -51,6 +53,7 @@ class _MyHomePageState extends State<MyHomePage> {
   int _charCount = 0;
   int _line = 1;
   int _column = 1;
+  int _lineCount = 1;
 
   @override
   void initState() {
@@ -78,6 +81,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _syncManager.flush();
     _syncManager.dispose();
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -109,6 +113,8 @@ class _MyHomePageState extends State<MyHomePage> {
     _charCount = content.length;
     // Count words (split by whitespace and filter empty)
     _wordCount = content.isEmpty ? 0 : content.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    // Count lines
+    _lineCount = content.isEmpty ? 1 : content.split('\n').length;
   }
 
   Future<void> _onChanged(String newText) async {
@@ -119,12 +125,21 @@ class _MyHomePageState extends State<MyHomePage> {
     
     await _syncManager.onTextChanged(oldText, newText);
     
+    // Refresh undo/redo state after text changes
+    await _refreshUndoRedoState();
+    
     if (mounted) {
       setState(() {
         _updateStats(newText);
         _updateCursorPosition();
       });
     }
+  }
+
+  Future<void> _refreshUndoRedoState() async {
+    final core = VelumCoreWrapper();
+    _canUndo = await core.api.canUndo();
+    _canRedo = await core.api.canRedo();
   }
 
   Future<void> _syncFromCore() async {
@@ -151,12 +166,14 @@ class _MyHomePageState extends State<MyHomePage> {
     final core = VelumCoreWrapper();
     await core.api.undo();
     await _syncFromCore();
+    await _refreshUndoRedoState();
   }
 
   Future<void> _performRedo() async {
     final core = VelumCoreWrapper();
     await core.api.redo();
     await _syncFromCore();
+    await _refreshUndoRedoState();
   }
 
   Future<void> _saveFile() async {
@@ -241,17 +258,23 @@ class _MyHomePageState extends State<MyHomePage> {
                   border: Border.all(color: Colors.grey.shade300),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: TextField(
-                  controller: _controller,
-                  maxLines: null,
-                  expands: true,
-                  onChanged: _onChanged,
-                  decoration: const InputDecoration(
-                    hintText: 'Start typing...',
-                    contentPadding: EdgeInsets.all(12),
-                    border: InputBorder.none,
+                child: EditorWithGutter(
+                  editor: TextField(
+                    controller: _controller,
+                    maxLines: null,
+                    expands: true,
+                    onChanged: _onChanged,
+                    decoration: const InputDecoration(
+                      hintText: 'Start typing...',
+                      contentPadding: EdgeInsets.all(12),
+                      border: InputBorder.none,
+                    ),
+                    style: const TextStyle(fontFamily: 'Courier', fontSize: 16),
                   ),
-                  style: const TextStyle(fontFamily: 'Courier', fontSize: 16),
+                  lineCount: _lineCount,
+                  currentLine: _line,
+                  gutterScrollController: _scrollController,
+                  lineHeight: 24.0,
                 ),
               ),
             ),
