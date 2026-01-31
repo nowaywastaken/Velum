@@ -60,6 +60,123 @@ fn wire_multiply_impl(
         },
     )
 }
+fn wire_create_empty_document_impl(port_: MessagePort) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, String, _>(
+        WrapInfo {
+            debug_name: "create_empty_document",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || move |task_callback| Result::<_, ()>::Ok(create_empty_document()),
+    )
+}
+fn wire_insert_text_impl(
+    port_: MessagePort,
+    offset: impl Wire2Api<usize> + UnwindSafe,
+    new_text: impl Wire2Api<String> + UnwindSafe,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, String, _>(
+        WrapInfo {
+            debug_name: "insert_text",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || {
+            let api_offset = offset.wire2api();
+            let api_new_text = new_text.wire2api();
+            move |task_callback| Result::<_, ()>::Ok(insert_text(api_offset, api_new_text))
+        },
+    )
+}
+fn wire_delete_text_impl(
+    port_: MessagePort,
+    offset: impl Wire2Api<usize> + UnwindSafe,
+    length: impl Wire2Api<usize> + UnwindSafe,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, String, _>(
+        WrapInfo {
+            debug_name: "delete_text",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || {
+            let api_offset = offset.wire2api();
+            let api_length = length.wire2api();
+            move |task_callback| Result::<_, ()>::Ok(delete_text(api_offset, api_length))
+        },
+    )
+}
+fn wire_get_text_range_impl(
+    port_: MessagePort,
+    offset: impl Wire2Api<usize> + UnwindSafe,
+    length: impl Wire2Api<usize> + UnwindSafe,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, String, _>(
+        WrapInfo {
+            debug_name: "get_text_range",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || {
+            let api_offset = offset.wire2api();
+            let api_length = length.wire2api();
+            move |task_callback| Result::<_, ()>::Ok(get_text_range(api_offset, api_length))
+        },
+    )
+}
+fn wire_get_line_count_impl(port_: MessagePort) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, usize, _>(
+        WrapInfo {
+            debug_name: "get_line_count",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || move |task_callback| Result::<_, ()>::Ok(get_line_count()),
+    )
+}
+fn wire_get_line_content_impl(port_: MessagePort, line_number: impl Wire2Api<usize> + UnwindSafe) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, Option<String>, _>(
+        WrapInfo {
+            debug_name: "get_line_content",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || {
+            let api_line_number = line_number.wire2api();
+            move |task_callback| Result::<_, ()>::Ok(get_line_content(api_line_number))
+        },
+    )
+}
+fn wire_get_full_text_impl(port_: MessagePort) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, String, _>(
+        WrapInfo {
+            debug_name: "get_full_text",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || move |task_callback| Result::<_, ()>::Ok(get_full_text()),
+    )
+}
+fn wire_undo_impl(port_: MessagePort) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, String, _>(
+        WrapInfo {
+            debug_name: "undo",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || move |task_callback| Result::<_, ()>::Ok(undo()),
+    )
+}
+fn wire_redo_impl(port_: MessagePort) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap::<_, _, _, String, _>(
+        WrapInfo {
+            debug_name: "redo",
+            port: Some(port_),
+            mode: FfiCallMode::Normal,
+        },
+        move || move |task_callback| Result::<_, ()>::Ok(redo()),
+    )
+}
 // Section: wrapper structs
 
 // Section: static checks
@@ -82,8 +199,20 @@ where
         (!self.is_null()).then(|| self.wire2api())
     }
 }
+
 impl Wire2Api<i32> for i32 {
     fn wire2api(self) -> i32 {
+        self
+    }
+}
+impl Wire2Api<u8> for u8 {
+    fn wire2api(self) -> u8 {
+        self
+    }
+}
+
+impl Wire2Api<usize> for usize {
+    fn wire2api(self) -> usize {
         self
     }
 }

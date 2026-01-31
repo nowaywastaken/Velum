@@ -22,6 +22,54 @@ abstract class VelumCore {
   Future<int> multiply({required int a, required int b, dynamic hint});
 
   FlutterRustBridgeTaskConstMeta get kMultiplyConstMeta;
+
+  Future<String> createEmptyDocument({dynamic hint});
+
+  FlutterRustBridgeTaskConstMeta get kCreateEmptyDocumentConstMeta;
+
+  Future<String> insertText({
+    required int offset,
+    required String newText,
+    dynamic hint,
+  });
+
+  FlutterRustBridgeTaskConstMeta get kInsertTextConstMeta;
+
+  Future<String> deleteText({
+    required int offset,
+    required int length,
+    dynamic hint,
+  });
+
+  FlutterRustBridgeTaskConstMeta get kDeleteTextConstMeta;
+
+  Future<String> getTextRange({
+    required int offset,
+    required int length,
+    dynamic hint,
+  });
+
+  FlutterRustBridgeTaskConstMeta get kGetTextRangeConstMeta;
+
+  Future<int> getLineCount({dynamic hint});
+
+  FlutterRustBridgeTaskConstMeta get kGetLineCountConstMeta;
+
+  Future<String?> getLineContent({required int lineNumber, dynamic hint});
+
+  FlutterRustBridgeTaskConstMeta get kGetLineContentConstMeta;
+
+  Future<String> getFullText({dynamic hint});
+
+  FlutterRustBridgeTaskConstMeta get kGetFullTextConstMeta;
+
+  Future<String> undo({dynamic hint});
+
+  FlutterRustBridgeTaskConstMeta get kUndoConstMeta;
+
+  Future<String> redo({dynamic hint});
+
+  FlutterRustBridgeTaskConstMeta get kRedoConstMeta;
 }
 
 class VelumCoreImpl implements VelumCore {
@@ -95,6 +143,200 @@ class VelumCoreImpl implements VelumCore {
         argNames: ["a", "b"],
       );
 
+  Future<String> createEmptyDocument({dynamic hint}) {
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) => _platform.inner.wire_create_empty_document(port_),
+        parseSuccessData: _wire2api_String,
+        parseErrorData: null,
+
+        constMeta: kCreateEmptyDocumentConstMeta,
+        argValues: [],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kCreateEmptyDocumentConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(
+        debugName: "create_empty_document",
+        argNames: [],
+      );
+
+  Future<String> insertText({
+    required int offset,
+    required String newText,
+    dynamic hint,
+  }) {
+    var arg0 = api2wire_usize(offset);
+    var arg1 = _platform.api2wire_String(newText);
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) => _platform.inner.wire_insert_text(port_, arg0, arg1),
+        parseSuccessData: _wire2api_String,
+        parseErrorData: null,
+
+        constMeta: kInsertTextConstMeta,
+        argValues: [offset, newText],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kInsertTextConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(
+        debugName: "insert_text",
+        argNames: ["offset", "newText"],
+      );
+
+  Future<String> deleteText({
+    required int offset,
+    required int length,
+    dynamic hint,
+  }) {
+    var arg0 = api2wire_usize(offset);
+    var arg1 = api2wire_usize(length);
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) => _platform.inner.wire_delete_text(port_, arg0, arg1),
+        parseSuccessData: _wire2api_String,
+        parseErrorData: null,
+
+        constMeta: kDeleteTextConstMeta,
+        argValues: [offset, length],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kDeleteTextConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(
+        debugName: "delete_text",
+        argNames: ["offset", "length"],
+      );
+
+  Future<String> getTextRange({
+    required int offset,
+    required int length,
+    dynamic hint,
+  }) {
+    var arg0 = api2wire_usize(offset);
+    var arg1 = api2wire_usize(length);
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) =>
+            _platform.inner.wire_get_text_range(port_, arg0, arg1),
+        parseSuccessData: _wire2api_String,
+        parseErrorData: null,
+
+        constMeta: kGetTextRangeConstMeta,
+        argValues: [offset, length],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kGetTextRangeConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(
+        debugName: "get_text_range",
+        argNames: ["offset", "length"],
+      );
+
+  Future<int> getLineCount({dynamic hint}) {
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) => _platform.inner.wire_get_line_count(port_),
+        parseSuccessData: _wire2api_usize,
+        parseErrorData: null,
+
+        constMeta: kGetLineCountConstMeta,
+        argValues: [],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kGetLineCountConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(
+        debugName: "get_line_count",
+        argNames: [],
+      );
+
+  Future<String?> getLineContent({required int lineNumber, dynamic hint}) {
+    var arg0 = api2wire_usize(lineNumber);
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) => _platform.inner.wire_get_line_content(port_, arg0),
+        parseSuccessData: _wire2api_opt_String,
+        parseErrorData: null,
+
+        constMeta: kGetLineContentConstMeta,
+        argValues: [lineNumber],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kGetLineContentConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(
+        debugName: "get_line_content",
+        argNames: ["lineNumber"],
+      );
+
+  Future<String> getFullText({dynamic hint}) {
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) => _platform.inner.wire_get_full_text(port_),
+        parseSuccessData: _wire2api_String,
+        parseErrorData: null,
+
+        constMeta: kGetFullTextConstMeta,
+        argValues: [],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kGetFullTextConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(
+        debugName: "get_full_text",
+        argNames: [],
+      );
+
+  Future<String> undo({dynamic hint}) {
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) => _platform.inner.wire_undo(port_),
+        parseSuccessData: _wire2api_String,
+        parseErrorData: null,
+
+        constMeta: kUndoConstMeta,
+        argValues: [],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kUndoConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(debugName: "undo", argNames: []);
+
+  Future<String> redo({dynamic hint}) {
+    return _platform.executeNormal(
+      FlutterRustBridgeTask(
+        callFfi: (port_) => _platform.inner.wire_redo(port_),
+        parseSuccessData: _wire2api_String,
+        parseErrorData: null,
+
+        constMeta: kRedoConstMeta,
+        argValues: [],
+        hint: hint,
+      ),
+    );
+  }
+
+  FlutterRustBridgeTaskConstMeta get kRedoConstMeta =>
+      const FlutterRustBridgeTaskConstMeta(debugName: "redo", argNames: []);
+
   void dispose() {
     _platform.dispose();
   }
@@ -108,12 +350,20 @@ class VelumCoreImpl implements VelumCore {
     return raw as int;
   }
 
+  String? _wire2api_opt_String(dynamic raw) {
+    return raw == null ? null : _wire2api_String(raw);
+  }
+
   int _wire2api_u8(dynamic raw) {
     return raw as int;
   }
 
   Uint8List _wire2api_uint_8_list(dynamic raw) {
     return raw as Uint8List;
+  }
+
+  int _wire2api_usize(dynamic raw) {
+    return castInt(raw);
   }
 }
 
@@ -123,12 +373,34 @@ class VelumCoreImpl implements VelumCore {
 int api2wire_i32(int raw) {
   return raw;
 }
+
+@protected
+int api2wire_u8(int raw) {
+  return raw;
+}
+
+@protected
+int api2wire_usize(int raw) {
+  return raw;
+}
 // Section: finalizer
 
 class VelumCorePlatform extends FlutterRustBridgeBase<VelumCoreWire> {
   VelumCorePlatform(ffi.DynamicLibrary dylib) : super(VelumCoreWire(dylib));
 
   // Section: api2wire
+
+  @protected
+  ffi.Pointer<wire_uint_8_list> api2wire_String(String raw) {
+    return api2wire_uint_8_list(utf8.encoder.convert(raw));
+  }
+
+  @protected
+  ffi.Pointer<wire_uint_8_list> api2wire_uint_8_list(Uint8List raw) {
+    final ans = inner.new_uint_8_list_0(raw.length);
+    ans.ref.ptr.asTypedList(raw.length).setAll(0, raw);
+    return ans;
+  }
 
   // Section: finalizer
 
@@ -248,6 +520,124 @@ class VelumCoreWire implements FlutterRustBridgeWireBase {
   late final _wire_multiply = _wire_multiplyPtr
       .asFunction<void Function(int, int, int)>();
 
+  void wire_create_empty_document(int port_) {
+    return _wire_create_empty_document(port_);
+  }
+
+  late final _wire_create_empty_documentPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+        'wire_create_empty_document',
+      );
+  late final _wire_create_empty_document = _wire_create_empty_documentPtr
+      .asFunction<void Function(int)>();
+
+  void wire_insert_text(
+    int port_,
+    int offset,
+    ffi.Pointer<wire_uint_8_list> new_text,
+  ) {
+    return _wire_insert_text(port_, offset, new_text);
+  }
+
+  late final _wire_insert_textPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.UintPtr,
+            ffi.Pointer<wire_uint_8_list>,
+          )
+        >
+      >('wire_insert_text');
+  late final _wire_insert_text = _wire_insert_textPtr
+      .asFunction<void Function(int, int, ffi.Pointer<wire_uint_8_list>)>();
+
+  void wire_delete_text(int port_, int offset, int length) {
+    return _wire_delete_text(port_, offset, length);
+  }
+
+  late final _wire_delete_textPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(ffi.Int64, ffi.UintPtr, ffi.UintPtr)
+        >
+      >('wire_delete_text');
+  late final _wire_delete_text = _wire_delete_textPtr
+      .asFunction<void Function(int, int, int)>();
+
+  void wire_get_text_range(int port_, int offset, int length) {
+    return _wire_get_text_range(port_, offset, length);
+  }
+
+  late final _wire_get_text_rangePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(ffi.Int64, ffi.UintPtr, ffi.UintPtr)
+        >
+      >('wire_get_text_range');
+  late final _wire_get_text_range = _wire_get_text_rangePtr
+      .asFunction<void Function(int, int, int)>();
+
+  void wire_get_line_count(int port_) {
+    return _wire_get_line_count(port_);
+  }
+
+  late final _wire_get_line_countPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+        'wire_get_line_count',
+      );
+  late final _wire_get_line_count = _wire_get_line_countPtr
+      .asFunction<void Function(int)>();
+
+  void wire_get_line_content(int port_, int line_number) {
+    return _wire_get_line_content(port_, line_number);
+  }
+
+  late final _wire_get_line_contentPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64, ffi.UintPtr)>>(
+        'wire_get_line_content',
+      );
+  late final _wire_get_line_content = _wire_get_line_contentPtr
+      .asFunction<void Function(int, int)>();
+
+  void wire_get_full_text(int port_) {
+    return _wire_get_full_text(port_);
+  }
+
+  late final _wire_get_full_textPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+        'wire_get_full_text',
+      );
+  late final _wire_get_full_text = _wire_get_full_textPtr
+      .asFunction<void Function(int)>();
+
+  void wire_undo(int port_) {
+    return _wire_undo(port_);
+  }
+
+  late final _wire_undoPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>('wire_undo');
+  late final _wire_undo = _wire_undoPtr.asFunction<void Function(int)>();
+
+  void wire_redo(int port_) {
+    return _wire_redo(port_);
+  }
+
+  late final _wire_redoPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>('wire_redo');
+  late final _wire_redo = _wire_redoPtr.asFunction<void Function(int)>();
+
+  ffi.Pointer<wire_uint_8_list> new_uint_8_list_0(int len) {
+    return _new_uint_8_list_0(len);
+  }
+
+  late final _new_uint_8_list_0Ptr =
+      _lookup<
+        ffi.NativeFunction<ffi.Pointer<wire_uint_8_list> Function(ffi.Int32)>
+      >('new_uint_8_list_0');
+  late final _new_uint_8_list_0 = _new_uint_8_list_0Ptr
+      .asFunction<ffi.Pointer<wire_uint_8_list> Function(int)>();
+
   void free_WireSyncReturn(WireSyncReturn ptr) {
     return _free_WireSyncReturn(ptr);
   }
@@ -261,6 +651,15 @@ class VelumCoreWire implements FlutterRustBridgeWireBase {
 }
 
 final class _Dart_Handle extends ffi.Opaque {}
+
+final class BufferId extends ffi.Opaque {}
+
+final class wire_uint_8_list extends ffi.Struct {
+  external ffi.Pointer<ffi.Uint8> ptr;
+
+  @ffi.Int32()
+  external int len;
+}
 
 typedef DartPostCObjectFnType =
     ffi.Pointer<
