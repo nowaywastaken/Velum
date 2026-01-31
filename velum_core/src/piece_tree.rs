@@ -5,6 +5,8 @@ use log::{debug, trace};
 
 /// Represents which buffer a piece comes from
 /// -1 means original buffer (index 0), other values are buffer indices
+const MAX_UNDO_DEPTH: usize = 100;
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BufferId(pub isize);
 
@@ -341,6 +343,9 @@ impl PieceTree {
                 offset,
                 length: byte_count,
             });
+            if self.undo_stack.len() > MAX_UNDO_DEPTH {
+                self.undo_stack.remove(0);
+            }
             self.redo_stack.clear();
         }
 
@@ -645,6 +650,9 @@ impl PieceTree {
                 offset,
                 text: deleted_text,
             });
+            if self.undo_stack.len() > MAX_UNDO_DEPTH {
+                self.undo_stack.remove(0);
+            }
             self.redo_stack.clear();
         }
 

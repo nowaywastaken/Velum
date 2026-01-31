@@ -6,6 +6,7 @@ import 'status_bar.dart';
 import 'toolbar.dart';
 import 'line_numbers.dart';
 import 'package:file_picker/file_picker.dart';
+import 'renderer.dart';
 
 void main() {
   runApp(const MyApp());
@@ -42,7 +43,9 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isSaving = false;
   String _previousText = "";
   bool _canUndo = true;
+
   bool _canRedo = true;
+  bool _useCustomRenderer = false;
   
   // TextSyncManager for optimized text sync
   late final TextSyncManager _syncManager;
@@ -176,6 +179,49 @@ class _MyHomePageState extends State<MyHomePage> {
     await _refreshUndoRedoState();
   }
 
+  void _toggleRenderer() {
+    setState(() {
+      _useCustomRenderer = !_useCustomRenderer;
+    });
+  }
+
+  // Text attribute callbacks
+  Future<void> _toggleBold() async {
+    final core = VelumCoreWrapper();
+    await core.toggleBold();
+    await _syncFromCore();
+  }
+
+  Future<void> _toggleItalic() async {
+    final core = VelumCoreWrapper();
+    await core.toggleItalic();
+    await _syncFromCore();
+  }
+
+  Future<void> _toggleUnderline() async {
+    final core = VelumCoreWrapper();
+    await core.toggleUnderline();
+    await _syncFromCore();
+  }
+
+  Future<void> _setFontSize(int size) async {
+    final core = VelumCoreWrapper();
+    await core.setFontSize(size);
+    await _syncFromCore();
+  }
+
+  Future<void> _setTextColor(String color) async {
+    final core = VelumCoreWrapper();
+    await core.setTextColor(color);
+    await _syncFromCore();
+  }
+
+  Future<void> _setBackgroundColor(String color) async {
+    final core = VelumCoreWrapper();
+    await core.setBackgroundColor(color);
+    await _syncFromCore();
+  }
+
   Future<void> _saveFile() async {
     setState(() => _isSaving = true);
     try {
@@ -247,6 +293,15 @@ class _MyHomePageState extends State<MyHomePage> {
         canUndo: _canUndo,
         canRedo: _canRedo,
         isSaving: _isSaving,
+        onToggleRenderer: _toggleRenderer,
+        isCustomRenderer: _useCustomRenderer,
+        onToggleBold: _toggleBold,
+        onToggleItalic: _toggleItalic,
+        onToggleUnderline: _toggleUnderline,
+        onSetFontSize: _setFontSize,
+        onSetTextColor: _setTextColor,
+        onSetBackgroundColor: _setBackgroundColor,
+        // TODO: Pass actual formatting state
       ),
       body: Column(
         children: [
@@ -257,25 +312,32 @@ class _MyHomePageState extends State<MyHomePage> {
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.grey.shade300),
                   borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: EditorWithGutter(
-                  editor: TextField(
-                    controller: _controller,
-                    maxLines: null,
-                    expands: true,
-                    onChanged: _onChanged,
-                    decoration: const InputDecoration(
-                      hintText: 'Start typing...',
-                      contentPadding: EdgeInsets.all(12),
-                      border: InputBorder.none,
+                child: _useCustomRenderer 
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        return VelumRenderer(width: constraints.maxWidth);
+                      },
+                    )
+                  : EditorWithGutter(
+                      editor: TextField(
+                        controller: _controller,
+                        maxLines: null,
+                        expands: true,
+                        onChanged: _onChanged,
+                        decoration: const InputDecoration(
+                          hintText: 'Start typing...',
+                          contentPadding: EdgeInsets.all(12),
+                          border: InputBorder.none,
+                        ),
+                        style: const TextStyle(fontFamily: 'Courier', fontSize: 16),
+                      ),
+                      lineCount: _lineCount,
+                      currentLine: _line,
+                      gutterScrollController: _scrollController,
+                      lineHeight: 24.0,
                     ),
-                    style: const TextStyle(fontFamily: 'Courier', fontSize: 16),
-                  ),
-                  lineCount: _lineCount,
-                  currentLine: _line,
-                  gutterScrollController: _scrollController,
-                  lineHeight: 24.0,
-                ),
               ),
             ),
           ),

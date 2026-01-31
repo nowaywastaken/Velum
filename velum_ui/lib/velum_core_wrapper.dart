@@ -266,4 +266,9 @@ class VelumCoreWrapper {
   Future<String> getTextWithAttributes() async {
     return api.getTextWithAttributes();
   }
+
+  /// Layouts the current document state and returns JSON layout information
+  Future<String> layoutCurrentDocument(double width) async {
+    return api.layoutCurrentDocument(width: width);
+  }
 }

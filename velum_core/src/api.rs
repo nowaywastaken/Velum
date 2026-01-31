@@ -776,6 +776,14 @@ pub fn get_text_height(text: &str, width: f32, line_height: f32, font_size: f32)
     measure::get_text_height(text, width, line_height, font_size)
 }
 
+/// Layouts the current document state and returns JSON layout information
+pub fn layout_current_document(width: f32) -> String {
+    let doc = DOCUMENT.read().unwrap();
+    let text = doc.content.get_text();
+    let mut layout = LineLayout::new();
+    layout.layout_to_json(&text, width)
+}
+
 // ==================== OOXML Document APIs ====================
 
 use crate::ooxml::{parse_ooxml, ParsedDocument};

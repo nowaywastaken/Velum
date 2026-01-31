@@ -6,9 +6,11 @@ class VelumToolbar extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback onRedo;
   final VoidCallback onSave;
   final VoidCallback onOpen;
+  final VoidCallback? onToggleRenderer;
   final bool canUndo;
   final bool canRedo;
   final bool isSaving;
+  final bool isCustomRenderer;
   
   // Text formatting callbacks
   final VoidCallback onToggleBold;
@@ -30,9 +32,11 @@ class VelumToolbar extends StatefulWidget implements PreferredSizeWidget {
     required this.onRedo,
     required this.onSave,
     required this.onOpen,
+    this.onToggleRenderer,
     this.canUndo = true,
     this.canRedo = true,
     this.isSaving = false,
+    this.isCustomRenderer = false,
     required this.onToggleBold,
     required this.onToggleItalic,
     required this.onToggleUnderline,
@@ -83,7 +87,13 @@ class _VelumToolbarState extends State<VelumToolbar> {
           tooltip: 'Open File',
           onPressed: widget.onOpen,
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 8),
+        _ToolbarButton(
+          icon: widget.isCustomRenderer ? Icons.visibility_off : Icons.visibility,
+          tooltip: widget.isCustomRenderer ? 'Edit Mode' : 'View Mode (Core Renderer)',
+          onPressed: widget.onToggleRenderer,
+        ),
+        const SizedBox(width: 8),
         // Text formatting buttons
         _ToolbarButton(
           icon: Icons.format_bold,
