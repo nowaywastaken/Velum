@@ -206,25 +206,21 @@ impl PieceTree {
         if content.is_empty() {
             return PieceTree::empty();
         }
-        
-        let char_count = content.chars().count();
         let length = content.len();
+        let char_length = content.chars().count();
         
-        let mut buffers = Vec::new();
-        buffers.push(String::new()); // Original buffer at index 0
-        buffers.push(content.clone()); // Add buffer at index 1
+        // Initial buffer
+        let buffers = vec![content];
         
-        let piece = Piece::new(0, length, BufferId(1), char_count);
-        
-        let mut pieces = Vec::new();
-        pieces.push(piece);
+        // Single piece covering the whole buffer
+        let piece = Piece::new(0, length, BufferId::ORIGINAL, char_length);
         
         PieceTree {
-            pieces,
+            pieces: vec![piece],
             buffers,
-            total_char_count: char_count,
+            total_char_count: char_length,
             total_length: length,
-            next_buffer_index: 1, // Next add will be at index 2
+            next_buffer_index: 1,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             is_undoing_redoing: false,
@@ -241,6 +237,31 @@ impl PieceTree {
             total_char_count: 0,
             total_length: 0,
             next_buffer_index: 0,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            is_undoing_redoing: false,
+            selection: Selection::default(),
+            saved_selection: None,
+        }
+    }
+
+    /// Creates a new PieceTree from pre-loaded data (e.g. from OOXML)
+    pub fn from_loaded_data(pieces: Vec<Piece>, buffers: Vec<String>) -> Self {
+        let total_char_count = pieces.iter().map(|p| p.piece_char_length).sum();
+        let total_length = pieces.iter().map(|p| p.length).sum();
+        
+        let next_buffer_index = if buffers.len() > 1 {
+            buffers.len() as isize
+        } else {
+            1
+        };
+
+        PieceTree {
+            pieces,
+            buffers,
+            total_char_count,
+            total_length,
+            next_buffer_index,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             is_undoing_redoing: false,

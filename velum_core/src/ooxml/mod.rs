@@ -21,8 +21,10 @@ mod error;
 mod types;
 mod opc;
 mod document;
+mod converter;
 
 pub use error::OoxmlError;
+pub use converter::ooxml_to_piece_tree;
 pub use types::{
     ContentType,
     Paragraph,
