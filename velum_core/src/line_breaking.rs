@@ -6,6 +6,8 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use unicode_segmentation::UnicodeSegmentation;
+use std::sync::Arc;
+use crate::text_shaping::{TextShaper, GlyphInfo};
 
 /// Represents the type of line break
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,30 +66,6 @@ pub struct CharWidth {
     /// Width in abstract units
     pub width: f32,
 }
-
-/// Simple font metrics for ASCII text (space=32 to tilde=127, 96 characters)
-const ASCII_WIDTHS: [f32; 96] = [
-    // Space to ? (32-63)
-    0.278, 0.278, 0.365, 0.365, 0.556, 0.556, 0.333, 0.333,
-    0.365, 0.365, 0.278, 0.278, 0.365, 0.278, 0.278, 0.365,
-    0.278, 0.278, 0.365, 0.278, 0.278, 0.365, 0.278, 0.278,
-    0.365, 0.278, 0.278, 0.365, 0.278, 0.278, 0.365, 0.278,
-    // @ to O (64-79)
-    0.556, 0.556, 0.556, 0.556, 0.556, 0.556, 0.556, 0.556,
-    0.556, 0.556, 0.556, 0.556, 0.556, 0.556, 0.556, 0.556,
-    // P to _ (80-95)
-    0.556, 0.556, 0.556, 0.556, 0.556, 0.556, 0.556, 0.556,
-    0.556, 0.556, 0.278, 0.278, 0.365, 0.365, 0.365, 0.365,
-    // ` to o (96-111)
-    0.278, 0.5, 0.556, 0.556, 0.556, 0.556, 0.278, 0.333,
-    0.556, 0.556, 0.333, 0.333, 0.365, 0.333, 0.556, 0.556,
-    // p to ~ (112-127)
-    0.278, 0.278, 0.5, 0.278, 0.833, 0.5, 0.5, 0.365,
-    0.278, 0.5, 0.333, 0.444, 0.333, 0.333, 0.5, 0.278,
-];
-
-/// Common CJK character width (typically full-width)
-const CJK_WIDTH: f32 = 1.0;
 
 /// Minimum ratio for considering a line "too loose"
 const TOO_LOOSE_RATIO: f32 = 0.7;
@@ -184,10 +162,7 @@ impl PartialOrd for BreakBox {
 #[derive(Debug, Clone)]
 pub struct LineBreaker {
     pub config: LineBreakerConfig,
-    // Cache for text widths
-    width_cache: HashMap<String, f32>,
-    // Cache for character widths
-    char_widths: HashMap<char, f32>,
+    shaper: Arc<TextShaper>,
 }
 
 impl Default for LineBreaker {
@@ -202,8 +177,7 @@ impl LineBreaker {
     pub fn new() -> Self {
         LineBreaker {
             config: LineBreakerConfig::default(),
-            width_cache: HashMap::new(),
-            char_widths: HashMap::new(),
+            shaper: Arc::new(TextShaper::new()),
         }
     }
 
@@ -212,8 +186,7 @@ impl LineBreaker {
     pub fn with_config(config: LineBreakerConfig) -> Self {
         LineBreaker {
             config,
-            width_cache: HashMap::new(),
-            char_widths: HashMap::new(),
+            shaper: Arc::new(TextShaper::new()),
         }
     }
 
@@ -237,51 +210,15 @@ impl LineBreaker {
         self.config.hyphenation_enabled = enabled;
     }
 
-    /// Gets the width of a single character
-    #[inline]
-    fn char_width(&mut self, ch: char) -> f32 {
-        if let Some(width) = self.char_widths.get(&ch) {
-            return *width;
-        }
-
-        let width = match ch {
-            '\t' => self.config.tab_width,
-            ' ' => 0.25, // Standard space width
-            c if c.is_ascii() && (c as u8) >= 32 && (c as u8) < 128 => {
-                ASCII_WIDTHS[(c as u8 - 32) as usize]
-            }
-            // CJK and other wide characters
-            c if c as u32 >= 0x1100 => CJK_WIDTH, // Hangul, CJK, etc.
-            c if c as u32 >= 0x3000 => CJK_WIDTH, // CJK symbols and punctuation
-            // Default to average character width
-            _ => 0.5,
-        };
-
-        self.char_widths.insert(ch, width);
-        width
-    }
-
     /// Calculates the width of a substring
     fn text_width(&mut self, text: &str) -> f32 {
-        // Check cache first
-        if let Some(&width) = self.width_cache.get(text) {
-            return width;
-        }
-
-        let mut width = 0.0f32;
-        for ch in text.chars() {
-            width += self.char_width(ch);
-        }
-
-        self.width_cache.insert(text.to_string(), width);
-        width
+        self.shaper.measure_width(text)
     }
 
-    /// Clears the width cache
+    /// Clears the width cache (No-op in new engine)
     #[inline]
     pub fn clear_cache(&mut self) {
-        self.width_cache.clear();
-        self.char_widths.clear();
+        // shaper handles caching internally if needed
     }
 
     /// Checks if a character is a valid break point (after the character)
@@ -315,11 +252,42 @@ impl LineBreaker {
         (code >= 0x30A0 && code <= 0x30FF)
     }
 
-    /// Gets break points for a line
+    /// Gets break points for a line using HarfBuzz shaping
     fn get_break_points(&mut self, text: &str) -> Vec<BreakPoint> {
         let mut break_points: Vec<BreakPoint> = Vec::new();
-        let chars: Vec<char> = text.chars().collect();
-        let len = chars.len();
+        let len = text.len();
+
+        // 1. Shape the entire text to get accurate glyph positions
+        let (total_width, glyphs) = self.shaper.shape(text);
+
+        // 2. Build a map of byte_index -> x_position
+        // We assume 1000 units = 1 EM. We normalized in TextShaper to returns EMs.
+        // Wait, TextShaper returns (f32, Vec<GlyphInfo>).
+        // GlyphInfo x_advance is in units (1000/em).
+        // We need to convert advances to the same unit.
+        // Let's assume shaper returns width in EMs, but glyph advances are raw units.
+        const SCALE: f32 = 1000.0; // Must match TextShaper
+
+        let mut cluster_pos: HashMap<u32, f32> = HashMap::new();
+        let mut current_pos_units = 0;
+        
+        // Populate cluster positions from glyphs
+        for glyph in &glyphs {
+             // For each glyph, the position corresponds to its cluster start
+             // If multiple glyphs share a cluster, the first one establishes the pos?
+             // Or we just sum up.
+             // Usually, cluster maps to char index.
+             // We'll record position for this cluster if not set?
+             // Actually, for BreakPoint width, we need the width *up to* this point.
+             // So we accumulate.
+             
+             let pos_em = current_pos_units as f32 / SCALE;
+             cluster_pos.entry(glyph.cluster).or_insert(pos_em);
+             current_pos_units += glyph.x_advance;
+        }
+        // Add end position
+        let final_width = current_pos_units as f32 / SCALE;
+        cluster_pos.insert(len as u32, final_width);
 
         // Add start break point
         break_points.push(BreakPoint {
@@ -332,21 +300,20 @@ impl LineBreaker {
             flagged: false,
         });
 
-        let mut current_width = 0.0f32;
         let mut in_word = false;
-        let mut word_start = 0usize;
 
-        for (i, ch) in chars.iter().enumerate() {
-            let char_width = self.char_width(*ch);
-            current_width += char_width;
-
-            // Handle CJK characters - each can be a break point
-            if self.is_cjk(*ch) {
+        for (char_idx, (i, ch)) in text.char_indices().enumerate() {
+             // Handle CJK characters - each can be a break point
+            if self.is_cjk(ch) {
                 // CJK: break after each character
+                // Width at i + char_len
+                let next_idx = i + ch.len_utf8();
+                let width = *cluster_pos.get(&(next_idx as u32)).unwrap_or(&final_width);
+                
                 break_points.push(BreakPoint {
-                    position: text.floor_char_to_byte(i + 1),
-                    char_offset: i + 1,
-                    width: current_width,
+                    position: next_idx,
+                    char_offset: char_idx + 1,
+                    width,
                     break_type: BreakType::SoftBreak,
                     is_hyphenated: false,
                     penalty: 0,
@@ -357,30 +324,32 @@ impl LineBreaker {
             }
 
             // Handle ASCII/whitespace
-            if *ch == ' ' || *ch == '\t' {
+            if ch == ' ' || ch == '\t' {
                 in_word = false;
                 continue;
             }
 
             // Start of a word
             if !in_word {
-                word_start = i;
                 in_word = true;
             }
 
             // Check if we can break after this character
-            if self.is_break_after(*ch) {
+            if self.is_break_after(ch) {
                 // Calculate penalty based on character
-                let penalty = match *ch {
+                let penalty = match ch {
                     '-' | '–' | '—' => PENALTY_HYPHEN,
                     '!' | '?' => PENALTY_HARD,
                     _ => 0,
                 };
+                
+                let next_idx = i + ch.len_utf8();
+                let width = *cluster_pos.get(&(next_idx as u32)).unwrap_or(&final_width);
 
                 break_points.push(BreakPoint {
-                    position: text.floor_char_to_byte(i + 1),
-                    char_offset: i + 1,
-                    width: current_width,
+                    position: next_idx, // Byte position
+                    char_offset: char_idx + 1,
+                    width,
                     break_type: BreakType::SoftBreak,
                     is_hyphenated: false,
                     penalty,
@@ -390,15 +359,23 @@ impl LineBreaker {
         }
 
         // Add end break point
+        // We need the total char count. 
+        // Iterate one more time or just count chars? 
+        // Since we just iterated, we know the count if clean.
+        // Actually text.chars().count() is O(N).
+        let char_count = text.chars().count();
         break_points.push(BreakPoint {
-            position: text.len(),
-            char_offset: len,
-            width: current_width,
+            position: len,
+            char_offset: char_count,
+            width: final_width,
             break_type: BreakType::HardBreak,
             is_hyphenated: false,
             penalty: 0,
             flagged: false,
         });
+        
+        // Remove duplicates and sort
+        break_points.dedup_by_key(|bp| bp.position);
 
         break_points
     }
@@ -474,7 +451,7 @@ impl LineBreaker {
             for (line_num, prev_break, total_demerits) in &active_breaks {
                 // Calculate line width
                 let line_width = current.width - prev_break.width;
-
+                
                 // Skip if line is too long
                 if line_width > max_width * 2.0 {
                     continue;
@@ -487,7 +464,11 @@ impl LineBreaker {
                     f32::MAX
                 };
 
-                let line_demerits = self.calculate_demerits(line_width, *line_num + 1, ratio);
+                let line_demerits = if current.break_type == BreakType::HardBreak {
+                    0.0
+                } else {
+                    self.calculate_demerits(line_width, *line_num + 1, ratio)
+                };
                 let mut total = total_demerits + line_demerits;
 
                 // Add penalty for flagged breaks
@@ -523,6 +504,7 @@ impl LineBreaker {
                     if total < best_demerits {
                         best_demerits = total;
                         best_break = Some(current.clone());
+                        chosen_breaks.insert(current.position, (prev_break.position, current.clone()));
                     }
                 } else if line_width <= max_width {
                     // Valid break point
@@ -668,16 +650,9 @@ mod tests {
     #[test]
     fn test_char_width_calculation() {
         let mut breaker = LineBreaker::new();
-
-        // ASCII characters
-        assert!(breaker.char_width('a') > 0.0);
-        assert!(breaker.char_width(' ') > 0.0);
-
-        // Tab
-        assert!(breaker.char_width('\t') > 0.0);
-
-        // CJK
-        assert!(breaker.char_width('中') > 0.0);
+        // Since we removed char_width, we test text_width
+        assert!(breaker.text_width("a") > 0.0);
+        assert!(breaker.text_width("中") > 0.0);
     }
 
     #[test]

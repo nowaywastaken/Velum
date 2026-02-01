@@ -3,6 +3,7 @@ pub mod line_breaking;
 pub mod line_layout;
 pub mod ooxml;
 pub mod find;
+pub mod text_shaping;
 
 pub use piece_tree::{BufferId, Piece, PieceTree, TextAttributes};
 pub use line_breaking::{BreakType, Line, LineBreaker};
