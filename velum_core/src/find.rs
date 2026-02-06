@@ -187,11 +187,9 @@ fn simple_search(
     if backward {
         // Search backward
         let mut search_range = if from == 0 {
-            0..text.len()
-        } else if from > 0 {
-            0..from.saturating_sub(1)
+            0..0
         } else {
-            0..text.len()
+            0..from
         };
 
         // If wrap_around is enabled and we don't find anything in the backward search,
