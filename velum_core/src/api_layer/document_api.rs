@@ -92,7 +92,13 @@ impl DocumentApi for PieceTreeDocumentApi {
     fn get_text_range(&self, start: usize, end: usize) -> Option<String> {
         let text = self.document.read().unwrap().get_text();
         if start <= end && end <= text.len() {
-            Some(text[start..end].to_string())
+        let text = self.document.read().unwrap().get_text();
+        let chars: Vec<char> = text.chars().collect();
+        if start <= end && end <= chars.len() {
+            Some(chars[start..end].iter().collect())
+        } else {
+            None
+        }
         } else {
             None
         }
