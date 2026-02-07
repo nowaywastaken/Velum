@@ -236,7 +236,7 @@ impl PieceTree {
             buffers: vec![String::new()],
             total_char_count: 0,
             total_length: 0,
-            next_buffer_index: 1,  // First insert should use BufferId(1), referencing buffers[1]
+            next_buffer_index: 0,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             is_undoing_redoing: false,
